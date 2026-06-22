@@ -1,11 +1,11 @@
 import numpy as np
-import song_recommender
-from song_recommender import SongRecommender, cross_entropy_loss
+import engine
+from model import SongRecommender, cross_entropy_loss
 
 # Checks if we are using the right math to find gradients. Compares backprop-generated gradients w/ manually derived gradients
 # (found using slope)
 def gradient_check(eps=1e-3, tol=1e-2, samples_per_param=8, seed=0):
-    song_recommender.DEFAULT_DTYPE = np.float64 # gradient check in double precision
+    engine.DEFAULT_DTYPE = np.float64 # gradient check in double precision
     np.random.seed(seed)  # model init uses the global RNG -> reproducible runs
 
     # Initialize tiny model + tiny batch
