@@ -2,6 +2,7 @@ import json
 import glob
 import os
 import numpy as np
+DEFAULT_DTYPE=np.float32
 
 # _backward() for each operation overrides the _backward() method for the output node that operation created
 # When called, _backward() will find the local derivative at that step and multiply it by the incoming gradient
@@ -16,7 +17,7 @@ import numpy as np
 
 class Tensor:
     def __init__(self, data, _creators=None, _op=None):
-        self.data = np.asarray(data, dtype=np.float32)
+        self.data = np.asarray(data, dtype=DEFAULT_DTYPE)
         self.grad = np.zeros_like(self.data) # Gradient of this tensor
         self._creators = _creators if _creators is not None else []
         self._op = _op
@@ -338,8 +339,13 @@ class SelfAttention(Module):
         # Find how much each song matches each song, scores[i][j] = song i's QUERY · song J's KEY = relevance of j to i
         scores = Q @ K_T 
         
-        # Scale down scores, NOTE: NOT a Tensor operation so NOT tracked by Autograd, minor issue but it is slightly incorrect
-        scores.data = scores.data / self.scale 
+        # Scale down scores, wrap as Tensor and give a backward so backprop can travel through and account for the scaling
+        scaled_data = scores.data / self.scale
+        scaled = Tensor(scaled_data, _creators=[scores], _op="scale")
+
+        def scale_backward():
+            scores.grad += scaled.grad / self.scale
+        scaled._backward = scale_backward
 
         # Find the weight of each Query Key pair where row 'i' is "how much song i attends to each song"
         # Relevance as probabilities, rows sum to 1
