@@ -1,0 +1,23 @@
+# --- Data (Million Playlist Dataset — too large for GitHub) ---
+data/
+
+# --- Trained model weights ---
+*.npz
+
+# --- Python virtual environment ---
+.venv/
+venv/
+
+# --- Python caches ---
+__pycache__/
+*.py[cod]
+*$py.class
+
+# --- Generated plots / outputs (optional, uncomment if you don't want them tracked) ---
+# *.png
+
+# --- OS / editor cruft ---
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
