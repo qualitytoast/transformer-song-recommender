@@ -7,6 +7,8 @@ import matplotlib.pyplot as plt
 from engine import SGD
 from model import SongRecommender, cross_entropy_loss
 from data import load_spotify_data, tokenize_and_slice
+from config import Config
+from tracking import ExperimentTracker
 
 def save_model(model, filename="transformer_weights.npz"):
     """Extracts raw numpy arrays from the model's Tensors and saves to disk."""
@@ -25,22 +27,25 @@ def load_model(model, filename="transformer_weights.npz"):
     else:
         print(f"\n[SYSTEM] No saved weights found at {filename}. Starting from scratch.")
 
-def train_transformer():
+def train_transformer(cfg=None):
+    cfg = cfg or Config()
+    tracker = ExperimentTracker(cfg)
     print("\n--- TRANSFORMER INITIALIZATION ---")
-    DATA_FOLDER = "data"
-    CONTEXT_LENGTH = 10 # Input window size "Predict the 11th song from 10"
-    EMBED_DIM = 64 # Feature-vector size for each song
-    WEIGHT_FILE = "spotify_transformer_weights.npz" # Where we save/load trained weights
-    
-    raw_playlists = load_spotify_data(DATA_FOLDER, max_playlists=5000)
-    
-    # Notice the new X_test and Y_test variables
-    X_train, Y_train, X_test, Y_test, vocab_size, id_to_track = tokenize_and_slice(raw_playlists, CONTEXT_LENGTH)
-    
-    model = SongRecommender(vocab_size=vocab_size, embed_dim=EMBED_DIM, context_length = CONTEXT_LENGTH, num_layers=2)
-    optimizer = SGD(model.parameters(), lr=0.05)
-    
-    load_model(model, WEIGHT_FILE) # Loads saved weights if it exists
+    print(f"Config: {cfg}")
+
+    # Reproducibility: seed ONCE, up front, so weight init + every shuffle is deterministic.
+    np.random.seed(cfg.seed)
+
+    raw_playlists = load_spotify_data(cfg.data_folder, max_playlists=cfg.max_playlists)
+
+    X_train, Y_train, X_test, Y_test, vocab_size, id_to_track = tokenize_and_slice(
+        raw_playlists, cfg.context_length, test_split=cfg.test_split, min_freq=cfg.min_freq)
+
+    model = SongRecommender(vocab_size=vocab_size, embed_dim=cfg.embed_dim,
+                            context_length=cfg.context_length, num_layers=cfg.num_layers)
+    optimizer = SGD(model.parameters(), lr=cfg.lr)
+
+    load_model(model, cfg.weight_file) # loads saved weights if they exist
     
     # One-Hot Encode the Train targets, converts the target song IDs into one-hot vectors
     # The y-side prep that leads to loss calculation
@@ -51,7 +56,7 @@ def train_transformer():
     # Grab a small static validation subset from the vault to keep the evaluation fast
     # Helps measure generalization (if the model is learning not just memorizing) during training using
     # a small 500 X_inputs with 500 corresponding Y_targets
-    val_size = min(500, len(X_test))
+    val_size = min(cfg.val_size, len(X_test))
     X_val = X_test[:val_size]
     Y_val_raw = Y_test[:val_size]
     Y_val_onehot = np.zeros((val_size, vocab_size), dtype=np.float32)
@@ -59,8 +64,8 @@ def train_transformer():
         Y_val_onehot[i, Y_val_raw[i]] = 1.0
 
     print("\n--- TRAINING & VALIDATION ---")
-    epochs = 30 # Num. of full passes over the training data to do
-    batch_size = 32 # How many examples to process per gradient update
+    epochs = cfg.epochs # Num. of full passes over the training data to do
+    batch_size = cfg.batch_size # How many examples to process per gradient update
     
     # Logging Arrays to record loss of each epoch
     # Train_loss tells us the model is learning, val_loss tells us if its generalizing or memorizing
@@ -79,7 +84,7 @@ def train_transformer():
     # Patience-based stopping, if NDCG@10 fails to improve for "patience" consecutive epochs, stop training
     # best_val_loss = float('inf')
     best_ndcg = -1.0
-    patience = 10
+    patience = cfg.patience
     epochs_without_improvement = 0
 
     for epoch in range(epochs):
@@ -144,6 +149,10 @@ def train_transformer():
         gains[ranks > K] = 0.0 # Not in top-K, set to 0
         val_ndcg = np.mean(gains) # Average score across all validation examples (across all (X_train, Y_target) pairs)
         ndcg_history.append(val_ndcg)
+        tracker.log_epoch(epoch,
+                          train_loss=float(avg_train_loss),
+                          val_loss=float(val_loss_node.data),
+                          ndcg=float(val_ndcg))
         
         print(f"Epoch {epoch:3d} | Train Loss: {avg_train_loss:.4f} | Val Loss: {val_loss_node.data:.4f} | NDCG@10: {val_ndcg:.4f}")
         
@@ -151,7 +160,7 @@ def train_transformer():
         if val_ndcg > best_ndcg:
             best_ndcg = val_ndcg
             epochs_without_improvement = 0
-            save_model(model, WEIGHT_FILE)
+            save_model(model, cfg.weight_file)
         else:
             epochs_without_improvement += 1
             print(f"[EARLY STOP] No NDCG improvement for {epochs_without_improvement}/{patience} "
@@ -173,7 +182,7 @@ def train_transformer():
     plt.savefig("loss_curve.png", dpi=120, bbox_inches="tight")
     print(f"[SYSTEM] Loss curve saved to loss_curve.png")
     print(f"[SYSTEM] Best NDCG@10 over {epochs} epochs: {max(ndcg_history):.4f}")
-
+    tracker.finish(best_ndcg=float(max(ndcg_history)), epochs_run=len(ndcg_history))
 
 if __name__ == "__main__":
     train_transformer()

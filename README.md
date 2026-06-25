@@ -1,4 +1,5 @@
 # 🎵 Transformer Song Recommender — Built From Scratch in NumPy
+![CI](https://github.com/qualitytoast/transformer-song-recommender/actions/workflows/ci.yml/badge.svg)
 
 A next-song recommendation engine powered by a Transformer, where **every
 component is implemented from scratch in pure NumPy** — no PyTorch, no

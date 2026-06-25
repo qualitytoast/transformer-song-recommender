@@ -24,3 +24,6 @@ __pycache__/
 Thumbs.db
 .vscode/
 .idea/
+
+# --- Experiment run logs ---
+runs/

@@ -72,4 +72,7 @@ def gradient_check(eps=1e-3, tol=1e-2, samples_per_param=8, seed=0):
     return max_rel
 
 if __name__ == "__main__":
-    gradient_check()
+    import sys
+    TOL = 1e-3
+    max_rel = gradient_check(tol=TOL)
+    sys.exit(0 if max_rel < TOL else 1) # Non-zero exit -> CI fails
