@@ -1,0 +1,9 @@
+data/
+.venv/
+venv/
+.git/
+runs/
+__pycache__/
+*.npz
+*.png
+training_log.txt

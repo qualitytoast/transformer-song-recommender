@@ -23,3 +23,11 @@ jobs:
 
       - name: Verify autograd (numerical gradient check)
         run: python test_gradients.py
+  docker-build:
+  runs-on: ubuntu-latest
+  steps:
+    - uses: actions/checkout@v4
+    - name: Build Docker image
+      run: docker build -t song-recommender .
+    - name: Verify autograd inside the container
+      run: docker run --rm song-recommender

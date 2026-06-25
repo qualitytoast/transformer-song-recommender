@@ -121,7 +121,6 @@ a learning curve (training vs. validation loss) to diagnose overfitting.
 - Adam optimizer
 - A PyTorch reimplementation to benchmark correctness and speed against the
   from-scratch version
-- Minimum-frequency vocabulary filtering for rare songs
 
 ## Tech stack
 
