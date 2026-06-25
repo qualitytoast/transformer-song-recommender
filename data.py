@@ -60,7 +60,7 @@ def load_spotify_data(data_folder_name="data", max_playlists=5000):
 #    ▼
 # X feeds model.forward (embedding → blocks → last pos → matchmaker → logits)
 # Y becomes the one-hot target in cross_entropy_loss
-def tokenize_and_slice(raw_playlists, context_length=3, test_split=0.1):
+def tokenize_and_slice(raw_playlists, context_length=3, test_split=0.1, min_freq=2):
     """
     Builds the vocabulary (song ↔ ID maps) over all data.
     Splits playlists into train/test sets.
@@ -68,20 +68,30 @@ def tokenize_and_slice(raw_playlists, context_length=3, test_split=0.1):
     Returns the train/test arrays, vocab_size, and the ID→song map (for turning predictions back into song names later).
     """
     print("\n--- TOKENIZATION & SPLITTING ---")
+
+    # Count how often each song appears across all playlists, songs that appear < min_freq times are dropped
+    # Songs that don't appear often enough can't help the model learn anything (think learning a word by reading it in 1 sentence/context vs 100 sentences/contexts)
+    # Over multiple runs, the model only knows to push that song in the very few contexts it appears in (think learning a word by reading it in 1 sentence/context 30 times)
+    counts = {}
+    for playlist in raw_playlists:
+        for track in playlist:
+            counts[track] = counts.get(track, 0) + 1
     
     # Build Dictionary on ALL data to prevent KeyErrors, this is the Tokenize step
+    # Build the vocab from ONLY songs seen >= min_freq times
     track_to_id = {}
     id_to_track = {}
     current_id = 0
     for playlist in raw_playlists:
         for track in playlist:
-            if track not in track_to_id:
+            if counts[track] >= min_freq and track not in track_to_id:
                 track_to_id[track] = current_id
                 id_to_track[current_id] = track
                 current_id += 1
                 
     vocab_size = len(track_to_id) # Num. of unqiue songs/catalog size
-    print(f"Vocabulary built! Found {vocab_size} unique songs.")
+    print(f"Vocabulary built! Kept {vocab_size} songs (>= {min_freq} plays); "
+          f"dropped {len(counts) - vocab_size} rare songs.")
     
     # Shuffle and split the raw playlists into train/test at the playlist level
     # 90/10 split, train model on first 90% of playlists, test model on last 10% of playlists
@@ -94,12 +104,21 @@ def tokenize_and_slice(raw_playlists, context_length=3, test_split=0.1):
     def process_subset(subset):
         X_data, Y_data = [], []
         for playlist in subset:
-            tokenized = [track_to_id[track] for track in playlist]
+            # Map each song to its ID, or None if it was filtered out (out-of-vocab)
+            tokenized = [track_to_id.get(track, None) for track in playlist]
             # For each position i, X_data gets tokenized[i: i+context_length] - a window of context_length consecutive songs (the INPUT)
             # Y_data gets tokenized [i + context_length] - the very next song after that window (the TARGET)
             for i in range(len(tokenized) - context_length):
-                X_data.append(tokenized[i : i + context_length])
-                Y_data.append(tokenized[i + context_length])
+                window = tokenized[i : i + context_length]
+                target = tokenized[i + context_length]
+                # Skip any window touching a rare song (input OR target). Alternative is to delete song outright or replace it with UNK signal
+                # Deleting it is feeding bad data to the model (A, UNK, B) -> (A, B) implies A then B which is false. Replacing with UNK signal
+                # would lead to the model attending to UNK (which is awkward) or predicting UNK (which is awkward)
+                # We skip windows to keep adjacency truthful and every kept example fully learnable.
+                if target is None or None in window:
+                    continue
+                X_data.append(window)
+                Y_data.append(target)
         # X_data is what flows through the embedding -> transformer, Y_data only appears as the one-hot target in cross_entropy_loss
         return np.array(X_data), np.array(Y_data)
 

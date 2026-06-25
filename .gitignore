@@ -4,6 +4,9 @@ data/
 # --- Trained model weights ---
 *.npz
 
+# --- Training log ---
+training_log.txt
+
 # --- Python virtual environment ---
 .venv/
 venv/

@@ -246,6 +246,7 @@ class TransformerBlock(Module):
         return out
 
 # Loss Function, takes in model's raw output scores and the correct answers, and produces a single scalar measuring how wrong the model is
+# Measures how much probability the model put on the correct answer, the lower the probability to the true song the higher the loss
 def cross_entropy_loss(logits, targets):
     """
     Combines Softmax activation and Cross-Entropy Loss into a single, 
