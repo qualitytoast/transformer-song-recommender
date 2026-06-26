@@ -161,7 +161,7 @@ def train_transformer(cfg=None):
             best_ndcg = val_ndcg
             epochs_without_improvement = 0
             save_model(model, cfg.weight_file)
-        else:
+        elif epoch >= cfg.min_epochs:
             epochs_without_improvement += 1
             print(f"[EARLY STOP] No NDCG improvement for {epochs_without_improvement}/{patience} "
                   f"(best NDCG@10: {best_ndcg:.4f})")

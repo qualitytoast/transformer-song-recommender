@@ -19,7 +19,8 @@ class Config:
     num_layers: int = 2
 
     # Training
-    epochs: int = 30
+    min_epochs: int = 20 # Warm up, NDCG is noisy at blooms late
+    epochs: int = 40
     batch_size: int = 32
     lr: float = 0.05
     patience: int = 10 # Early-stopping patience (epochs w/o NDCG improvement)

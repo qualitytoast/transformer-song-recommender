@@ -92,14 +92,30 @@ python test_gradients.py
 
 ## Results
 
-<!-- ================================================================= -->
-<!-- TODO (FILL ME IN): RUN A FULL TRAINING PASS, THEN COMPLETE THIS.   -->
-<!--   - Report your best NDCG@10                                       -->
-<!--   - Embed the generated train-vs-validation loss curve plot        -->
-<!--   - (Optional) a couple of sample playlist -> predicted-song demos -->
-<!-- ================================================================= -->
+## Results
 
-_Pending a training run — see the TODO above._
+Trained on 5,000 playlists (~34k-song vocabulary after min-frequency filtering),
+the model reaches **NDCG@10 ≈ 0.030** on held-out playlists — up from **~0.004**
+for the untrained model at initialization (~8× better than the random baseline).
+The run is reproducible (`seed=42`), with the best-NDCG checkpoint kept via early
+stopping on validation NDCG.
+
+![Learning curve](loss_curve.png)
+
+**Reading the curve:** training loss falls steadily while validation loss climbs —
+the signature of **overfitting**. With a modest model and limited data,
+the network begins memorizing training playlists rather than learning
+generalizable "what-follows-what" structure. Validation NDCG still rises for a
+while (ranking improves even as loss calibration degrades — they measure
+different things), then plateaus as memorization takes over.
+
+**Honest caveats:**
+- **High variance** — with only ~500 validation examples and a small model,
+  NDCG@10 swings across seeds/splits (observed ~0.03–0.08). The reported number
+  is one *reproducible* point, not a tight estimate.
+- The aim here is a **correct, from-scratch implementation**, not a
+  state-of-the-art score. A 2-layer NumPy model on CPU won't rival production
+  recommenders — and that's expected.
 
 Training logs per-epoch train loss, validation loss, and **NDCG@10**, and plots
 a learning curve (training vs. validation loss) to diagnose overfitting.
@@ -117,6 +133,9 @@ a learning curve (training vs. validation loss) to diagnose overfitting.
 
 ## Future work
 
+- Add to results songs trained on and songs predicted
+- Train on more data
+- Regularization to fight overfitting
 - Multi-head attention and causal masking
 - Adam optimizer
 - A PyTorch reimplementation to benchmark correctness and speed against the
