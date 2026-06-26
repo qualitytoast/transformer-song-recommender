@@ -92,13 +92,35 @@ python test_gradients.py
 
 ## Results
 
-## Results
-
 Trained on 5,000 playlists (~34k-song vocabulary after min-frequency filtering),
 the model reaches **NDCG@10 ≈ 0.030** on held-out playlists — up from **~0.004**
 for the untrained model at initialization (~8× better than the random baseline).
 The run is reproducible (`seed=42`), with the best-NDCG checkpoint kept via early
 stopping on validation NDCG.
+
+### Sample predictions (held-out playlists)
+
+Beyond the metric, here's what the model actually recommends. Given the first
+10 songs of a playlist it never trained on, it ranks all ~34k songs; the top 5
+are shown against the true next song. The inputs are mainstream 2016–2017
+hip-hop/rap, and the model's picks stay squarely in that lane — it learned the
+playlist's *vibe*, not random songs.
+
+**A hit:**
+
+    Context:     … → Mask Off → Truffle Butter
+    Top 5 picks: Low Life · Antidote · F*** Her Brains Out · rockstar · Broccoli
+    Actual next: Broccoli   ✅ (ranked #5)
+
+**A coherent miss:**
+
+    Context:     … → Broccoli → Jumpman
+    Top 5 picks: Mask Off · One Dance · Bounce Back · Not Nice · Back To Back
+    Actual next: Teenage Fever   ❌ (not in top 5 — but every pick is the same genre & era)
+
+The exact next track usually isn't in the top 5 (consistent with NDCG@10 ≈ 0.03),
+but the recommendations are reliably genre- and era-appropriate — the model
+captures mood and style even when it misses the specific song.
 
 ![Learning curve](loss_curve.png)
 
