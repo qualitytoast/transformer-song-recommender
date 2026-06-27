@@ -155,8 +155,6 @@ a learning curve (training vs. validation loss) to diagnose overfitting.
 
 ## Future work
 
-- Add to results songs trained on and songs predicted
-- Train on more data
 - Regularization to fight overfitting
 - Multi-head attention and causal masking
 - Adam optimizer
