@@ -43,7 +43,7 @@ def train_transformer(cfg=None):
 
     model = SongRecommender(vocab_size=vocab_size, embed_dim=cfg.embed_dim,
                             context_length=cfg.context_length, num_layers=cfg.num_layers)
-    optimizer = SGD(model.parameters(), lr=cfg.lr)
+    optimizer = SGD(model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay)
 
     load_model(model, cfg.weight_file) # loads saved weights if they exist
     

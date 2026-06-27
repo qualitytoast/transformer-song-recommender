@@ -192,9 +192,10 @@ class Module:
         return self.forward(*args, **kwargs)
 
 class SGD:
-    def __init__(self, parameters, lr=0.01):
+    def __init__(self, parameters, lr=0.01, weight_decay=0.0):
         self.parameters = parameters
         self.lr = lr # Learning Rate
+        self.weight_decay = weight_decay
 
     # Clears (zeroes) old gradient
     def zero_grad(self):
@@ -204,4 +205,6 @@ class SGD:
     def step(self):
         for p in self.parameters:
             # Move down the gradient (-=) by gradient * learning rate
-            p.data -= self.lr * p.grad
+            # Pull each weight towards 0, proportional to its size to prevent memorization
+            # Sharp, large weights -> model memorizing a specific pattern. Soft, small weights -> model generalizing
+            p.data -= self.lr * (p.grad + self.weight_decay * p.data)

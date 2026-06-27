@@ -17,9 +17,10 @@ class Config:
     # Model
     embed_dim: int = 64 # Size of feature-vectors
     num_layers: int = 2
+    weight_decay: float = 1e-3 # Regularization strength
 
     # Training
-    min_epochs: int = 20 # Warm up, NDCG is noisy at blooms late
+    min_epochs: int = 20 # Warm up, NDCG is noisy early and  blooms late
     epochs: int = 40
     batch_size: int = 32
     lr: float = 0.05
