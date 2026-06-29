@@ -36,6 +36,8 @@ so the math is provably correct rather than just plausible.
   Playlist Dataset, evaluated with **NDCG@10**
 - **Clean, modular design** — separated into `engine` / `model` / `data` /
   `train` with one-directional dependencies.
+- **Regularizers to fight overfitting** — L2 weight decay and inverted dropout (with a 
+  train/eval mode switch), which measurably lower validation loss and slow overfitting.
 
 ## How it works
 
@@ -61,8 +63,8 @@ the final position's representation is scored against the entire song catalog.
 
 | File | Responsibility |
 |------|----------------|
-| `engine.py` | Autograd core: `Tensor` (with `__add__`, `__matmul__`, `relu`, `sigmoid`, `softmax`, `backward`), `Module` base class, `SGD` optimizer |
-| `model.py` | Network: `LinearLayer`, `Embedding`, `SelfAttention`, `LayerNorm`, `TransformerBlock`, `SongRecommender`, and the `cross_entropy_loss` |
+| `engine.py` | Autograd core: `Tensor` (with `__add__`, `__matmul__`, `relu`, `sigmoid`, `softmax`, `backward`), `Module` base class, `SGD` optimizer with L2 weight decay, dropout op + TRAINING flag |
+| `model.py` | Network: `LinearLayer`, `Embedding`, `SelfAttention`, `LayerNorm`, `TransformerBlock`, `SongRecommender`, `cross_entropy_loss`, dropout in `TransformerBlock` + embedding dropout |
 | `data.py` | Data pipeline: loading the Spotify JSON, building the vocabulary, tokenizing and slicing into (input, target) pairs |
 | `train.py` | Orchestration: training loop, validation, NDCG@10, loss-curve plotting, weight save/load |
 | `test_gradients.py` | Numerical gradient check verifying all backward passes |
@@ -92,8 +94,8 @@ python test_gradients.py
 
 ## Results
 
-Trained on 5,000 playlists (~34k-song vocabulary after min-frequency filtering),
-the model reaches **NDCG@10 ≈ 0.030** on held-out playlists — up from **~0.004**
+Trained on 5,000 playlists (~34k-song vocabulary after min-frequency filtering), the model
+reaches **NDCG@10 ≈ 0.030** measured on 3,000 held-out sequences — up from **~0.004**
 for the untrained model at initialization (~8× better than the random baseline).
 The run is reproducible (`seed=42`), with the best-NDCG checkpoint kept via early
 stopping on validation NDCG.
@@ -106,17 +108,17 @@ are shown against the true next song. The inputs are mainstream 2016–2017
 hip-hop/rap, and the model's picks stay squarely in that lane — it learned the
 playlist's *vibe*, not random songs.
 
-**A hit:**
+**On-vibe, wrong track:**
 
-    Context:     … → Mask Off → Truffle Butter
-    Top 5 picks: Low Life · Antidote · F*** Her Brains Out · rockstar · Broccoli
-    Actual next: Broccoli   ✅ (ranked #5)
+    Context:     … → Controlla → Mask Off → Truffle Butter
+    Top 5 picks: Gold Digger · Blessings · Black Beatles · Congratulations · Moves
+    Actual next: Broccoli (feat. Lil Yachty)   ❌ (not in top 5)
 
-**A coherent miss:**
+**Another coherent miss:**
 
-    Context:     … → Broccoli → Jumpman
-    Top 5 picks: Mask Off · One Dance · Bounce Back · Not Nice · Back To Back
-    Actual next: Teenage Fever   ❌ (not in top 5 — but every pick is the same genre & era)
+    Context:     … → Jumpman → Teenage Fever → Chanel
+    Top 5 picks: LOVE. (feat. Zacari) · Losin Control · Bounce Back · XO TOUR Llif3 · PRBLMS
+    Actual next: Dirty Laundry   ❌ (not in top 5)
 
 The exact next track usually isn't in the top 5 (consistent with NDCG@10 ≈ 0.03),
 but the recommendations are reliably genre- and era-appropriate — the model
@@ -124,17 +126,22 @@ captures mood and style even when it misses the specific song.
 
 ![Learning curve](loss_curve.png)
 
-**Reading the curve:** training loss falls steadily while validation loss climbs —
+**Reading the curve:** training loss falls steadily while validation loss slowly climbs —
 the signature of **overfitting**. With a modest model and limited data,
 the network begins memorizing training playlists rather than learning
 generalizable "what-follows-what" structure. Validation NDCG still rises for a
 while (ranking improves even as loss calibration degrades — they measure
-different things), then plateaus as memorization takes over.
+different things), then plateaus as memorization takes over. To combat this, the
+model uses two regularizers: L2 weight decay on every parameter and inverted dropout applied
+to the embedding input and each transformer sub-layer's output. With them, validation loss is 
+lower and the train/val gap is narrower — overfitting sets in later and more gently than the
+unregularized model (measured in past runs).
 
 **Honest caveats:**
-- **High variance** — with only ~500 validation examples and a small model,
-  NDCG@10 swings across seeds/splits (observed ~0.03–0.08). The reported number
-  is one *reproducible* point, not a tight estimate.
+- **Model overfitting** — with limited data + huge input-output space, overfitting is 
+  bound to happen due to the model's large capacity for data. To get results
+  in a reasonable time, the model only takes in 5000 playlists, resulting in eventual 
+  memorization over 40 epochs.
 - The aim here is a **correct, from-scratch implementation**, not a
   state-of-the-art score. A 2-layer NumPy model on CPU won't rival production
   recommenders — and that's expected.
@@ -155,7 +162,6 @@ a learning curve (training vs. validation loss) to diagnose overfitting.
 
 ## Future work
 
-- Regularization to fight overfitting
 - Multi-head attention and causal masking
 - Adam optimizer
 - A PyTorch reimplementation to benchmark correctness and speed against the

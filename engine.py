@@ -1,5 +1,6 @@
 import numpy as np
 DEFAULT_DTYPE = np.float32
+TRAINING = True # Used to track if we're training vs. validating for train-only ops
 
 # _backward() for each operation overrides the _backward() method for the output node that operation created
 # When called, _backward() will find the local derivative at that step and multiply it by the incoming gradient
@@ -149,6 +150,27 @@ class Tensor:
             sum_dp = np.sum(out.grad * probs, axis=axis, keepdims=True)
             self.grad += probs * (out.grad - sum_dp)
             
+        out._backward = _backward
+        return out
+    
+    # Dropout method, randomly zeroes nodes according to a probability defined mask
+    # Dropout regularization prevents models from encoding specific patterns in specific nodes (memorization), forces patterns to
+    # be stored across nodes (generalization)
+    def dropout(self, p):
+        # Eval mode (or p == 0), pure pass through, no masking
+        if not TRAINING or p == 0.0:
+            return self
+        
+        q = 1.0 - p
+
+        # Survivors get 1/q (the inverted-dropout scaling), killed units get 0.
+        # Calculate the mask to apply to the data
+        mask = (np.random.rand(*self.data.shape) < q).astype(DEFAULT_DTYPE) / q
+        out = Tensor(self.data * mask, _creators=[self], _op="dropout")
+
+        def _backward():
+            # Reuse the EXACT cached mask — it is this op's local derivative.
+            self.grad += out.grad * mask
         out._backward = _backward
         return out
 

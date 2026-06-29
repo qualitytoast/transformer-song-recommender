@@ -192,7 +192,7 @@ class LayerNorm(Module):
 # Outputs a tensor of the exact same shape and same sequence, but each song's vector has been refined (contextualized by other songs and individually transformed)
 class TransformerBlock(Module):
     """A complete Transformer processing block (Attention + Add/Norm + FFN + Add/Norm)"""
-    def __init__(self, embed_dim):
+    def __init__(self, embed_dim, dropout_rate=0.0):
         super().__init__()
         # Gathers context
         self.attention = SelfAttention(embed_dim)
@@ -208,9 +208,14 @@ class TransformerBlock(Module):
         
         self.norm2 = LayerNorm(embed_dim)
 
+        self.dropout_rate = dropout_rate # For dropout regularization
+
     def forward(self, X):
         # Calculates attention, context is now a weighted blend of the other song's values per song
         context = self.attention(X)
+        
+        # The model just learned patterns, punch holes in the pattern it just learned so it can't memorize them
+        context = context.dropout(self.dropout_rate)
         
         # Add new context (weighted blend of each song per song) + original songs
         # Preserves original info (context only adjusts it) and allows for backprop to flow through deep networks
@@ -238,6 +243,9 @@ class TransformerBlock(Module):
         # y[j] = v[j][0]·h[0] + v[j][1]·h[1] + ... + v[j][255]·h[255] + c[j]
         # Each out of the 64 outputs per song is a learned weighted combination of which patterns fired (h[x] per song)
         ffn_out = self.ffn_compress(ffn_out)
+
+        # Same logic as before, the model just learned patterns, punch holes in them so it can't memorize them
+        ffn_out = ffn_out.dropout(self.dropout_rate)
         
         # Add normalized X after context was added + FFN output (detected patterns)
         final_added = x_norm_1 + ffn_out
@@ -278,7 +286,7 @@ def cross_entropy_loss(logits, targets):
 # IDs -> vectors -> context-aware cectors -> scores over all songs
 class SongRecommender(Module):
     """The complete end-to-end Recommendation Engine."""
-    def __init__(self, vocab_size, embed_dim, context_length, num_layers=12):
+    def __init__(self, vocab_size, embed_dim, context_length, num_layers=12, dropout_rate=0.0):
         super().__init__()
         
         # Song embedding, vocab_size number of songs , each song is a vector w/ embed_dim features
@@ -291,12 +299,14 @@ class SongRecommender(Module):
         # Create a list of num_layers Transformer blocks. Real models use 12 to 96 of these.
         self.blocks = []
         for _ in range(num_layers):
-            self.blocks.append(TransformerBlock(embed_dim))
+            self.blocks.append(TransformerBlock(embed_dim, dropout_rate))
             
         # The matchmaker (final linear layer) mapping embed_dim -> vocab_size
         # Takes the final, refined "vibe" vector, dot products it against each song in the catalog, produces one score per song measuring
         # "how well does this song match up against the 'vibe' vector?"
         self.matchmaker = LinearLayer(in_features=embed_dim, out_features=vocab_size)
+
+        self.dropout_rate = dropout_rate
 
     def forward(self, sequence_ids):
         # Look up the embedding for each song ID in sequence_ids and each position vector in self.position_embedding
@@ -305,6 +315,10 @@ class SongRecommender(Module):
 
         # Add them together, so you get "what this song is + what it means for a song to be played at this position" for each song
         x = x + pos_emb
+
+        # Embedding dropout, song embeddings are where a majority of parameters are and where the model notices and memorizes patterns
+        # Add dropout to prevent memorization of these patterns
+        x = x.dropout(self.dropout_rate)
         
         # Pass the data through the stacked Transformer Blocks
         # In Brief: Each block takes in: x of shape (batch, seq, embed_dim) - the current song vectors

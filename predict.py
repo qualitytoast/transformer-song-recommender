@@ -1,13 +1,14 @@
 import numpy as np
+import engine
 from config import Config
 from data import load_spotify_data, tokenize_and_slice
 from model import SongRecommender
 from train import load_model # Reuse — importing train won't run it (it's guarded by __main__)
 
-
 def show_sample_predictions(cfg=None, n=5, k=5):
     cfg = cfg or Config()
     np.random.seed(cfg.seed) # Reproduce the SAME vocab + held-out split as training
+    engine.TRAINING = False # Inference: full deterministic model, no dropout
 
     raw = load_spotify_data(cfg.data_folder, max_playlists=cfg.max_playlists)
     _, _, X_test, Y_test, vocab_size, id_to_track = tokenize_and_slice(

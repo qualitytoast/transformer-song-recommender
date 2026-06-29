@@ -6,6 +6,7 @@ from model import SongRecommender, cross_entropy_loss
 # (found using slope)
 def gradient_check(eps=1e-3, tol=1e-2, samples_per_param=8, seed=0):
     engine.DEFAULT_DTYPE = np.float64 # gradient check in double precision
+    engine.TRAINING = False # Dropout off - forward must be deterministic (NOT random)
     np.random.seed(seed)  # model init uses the global RNG -> reproducible runs
 
     # Initialize tiny model + tiny batch

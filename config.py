@@ -12,15 +12,16 @@ class Config:
     min_freq: int = 2 # Drop songs appearing fewer than this many times
     context_length: int = 10 # Input window size ("predict the 11th from 10")
     test_split: float = 0.1 # Fraction of playlists held out for evaluation (save 10% of playlists for testing)
-    val_size: int = 500 # Validation examples used for the loss / NDCG check
+    val_size: int = 3000 # Validation examples used for the loss / NDCG check
 
     # Model
     embed_dim: int = 64 # Size of feature-vectors
     num_layers: int = 2
     weight_decay: float = 1e-3 # Regularization strength
+    dropout_rate: float = 0.1 # Fraction of activations zeroed during training
 
     # Training
-    min_epochs: int = 20 # Warm up, NDCG is noisy early and  blooms late
+    min_epochs: int = 20 # Warm up, NDCG is noisy early and blooms late
     epochs: int = 40
     batch_size: int = 32
     lr: float = 0.05

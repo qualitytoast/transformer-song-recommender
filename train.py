@@ -4,6 +4,7 @@ import matplotlib
 matplotlib.use("Agg") # non-interactive backend: lets training run headless / unattended
 import matplotlib.pyplot as plt
 
+import engine
 from engine import SGD
 from model import SongRecommender, cross_entropy_loss
 from data import load_spotify_data, tokenize_and_slice
@@ -41,8 +42,8 @@ def train_transformer(cfg=None):
     X_train, Y_train, X_test, Y_test, vocab_size, id_to_track = tokenize_and_slice(
         raw_playlists, cfg.context_length, test_split=cfg.test_split, min_freq=cfg.min_freq)
 
-    model = SongRecommender(vocab_size=vocab_size, embed_dim=cfg.embed_dim,
-                            context_length=cfg.context_length, num_layers=cfg.num_layers)
+    model = SongRecommender(vocab_size=vocab_size, embed_dim=cfg.embed_dim, context_length=cfg.context_length,
+                            num_layers=cfg.num_layers, dropout_rate=cfg.dropout_rate)
     optimizer = SGD(model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay)
 
     load_model(model, cfg.weight_file) # loads saved weights if they exist
@@ -98,6 +99,7 @@ def train_transformer(cfg=None):
         epoch_loss = 0.0 # Accumulator for the total loss this epoch
         
         # TRAINING BATCHES
+        engine.TRAINING = True # Dropout ON for training
         for start_idx in range(0, num_train_samples, batch_size):
             # Slice data into mini-batches of 32
             end_idx = min(start_idx + batch_size, num_train_samples)
@@ -132,6 +134,7 @@ def train_transformer(cfg=None):
         train_loss_history.append(avg_train_loss)
         
         # VALIDATION CHECK (Testing the Vault data)
+        engine.TRAINING = False # Dropout OFF for testing
         # We run the forward pass, but we skip .backward() so it cannot learn from this!
         val_logits = model(X_val)
         val_loss_node = cross_entropy_loss(val_logits, Y_val_onehot)
