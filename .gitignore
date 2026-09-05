@@ -1,8 +1,9 @@
 # --- Data (Million Playlist Dataset — too large for GitHub) ---
 data/
 
-# --- Trained model weights ---
+# --- Trained model weights (old single-file format, and the bundle folder) ---
 *.npz
+artifacts/
 
 # --- Training log ---
 training_log.txt

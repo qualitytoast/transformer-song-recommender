@@ -1,9 +1,16 @@
+# Never send these to the Docker build context.
 data/
 .venv/
 venv/
 .git/
+.github/
 runs/
+tests/
 __pycache__/
-*.npz
-*.png
+**/__pycache__/
 training_log.txt
+*.png
+
+# Old-format root-level checkpoints (pre-bundle). This pattern matches root files
+# only, so artifacts/weights.npz still gets in, which the serving Dockerfile needs.
+*.npz

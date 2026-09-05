@@ -10,23 +10,7 @@ from model import SongRecommender, cross_entropy_loss
 from data import load_spotify_data, tokenize_and_slice
 from config import Config
 from tracking import ExperimentTracker
-
-def save_model(model, filename="transformer_weights.npz"):
-    """Extracts raw numpy arrays from the model's Tensors and saves to disk."""
-    weights = [p.data for p in model.parameters()]
-    np.savez(filename, *weights)
-    print(f"\n[SYSTEM] Weights successfully saved to {filename}")
-
-def load_model(model, filename="transformer_weights.npz"):
-    """Overwrites the random initialization with saved weights if they exist."""
-    if os.path.exists(filename):
-        loaded = np.load(filename)
-        params = model.parameters()
-        for i, p in enumerate(params):
-            p.data = loaded[f'arr_{i}']
-        print(f"\n[SYSTEM] Previous weights loaded from {filename}. Resuming training...")
-    else:
-        print(f"\n[SYSTEM] No saved weights found at {filename}. Starting from scratch.")
+from checkpoint import save_bundle, load_weights, read_vocab, read_metadata, WEIGHTS_FILE
 
 def train_transformer(cfg=None):
     cfg = cfg or Config()
@@ -46,7 +30,19 @@ def train_transformer(cfg=None):
                             num_layers=cfg.num_layers, dropout_rate=cfg.dropout_rate)
     optimizer = SGD(model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay)
 
-    load_model(model, cfg.weight_file) # loads saved weights if they exist
+    # Resuming is explicit (Config.resume), never "a weights file happened to be there".
+    # best_ndcg starts from the bundle's metadata, so the first epoch after a resume only
+    # overwrites the bundle if it genuinely beats the previous best.
+    best_ndcg = -1.0
+    if cfg.resume:
+        if read_vocab(cfg.bundle_dir) != [id_to_track[i] for i in range(vocab_size)]:
+            raise ValueError(f"Cannot resume: '{cfg.data_folder}' produces a different vocab than "
+                             f"the bundle in '{cfg.bundle_dir}' was trained on.")
+        load_weights(model, os.path.join(cfg.bundle_dir, WEIGHTS_FILE))
+        best_ndcg = read_metadata(cfg.bundle_dir).get("best_ndcg_at_10") or -1.0
+        print(f"\n[SYSTEM] Resumed from {cfg.bundle_dir}/ (best NDCG@10 so far: {best_ndcg:.4f})")
+    else:
+        print("\n[SYSTEM] Starting from scratch.")
     
     # One-Hot Encode the Train targets, converts the target song IDs into one-hot vectors
     # The y-side prep that leads to loss calculation
@@ -81,10 +77,9 @@ def train_transformer(cfg=None):
     # config      → epochs=30, batch_size=32
     # logging     → train/val loss histories
     
-    # Best-checkpoint saving, only call save_model when validation loss improves on the best val_loss seen so far, disk only holds the best model
+    # Best-checkpoint saving: save_bundle only when validation NDCG beats best_ndcg (set above), so
+    # disk only ever holds the best model. best_ndcg is -1 for a fresh run, or the bundle's value on resume.
     # Patience-based stopping, if NDCG@10 fails to improve for "patience" consecutive epochs, stop training
-    # best_val_loss = float('inf')
-    best_ndcg = -1.0
     patience = cfg.patience
     epochs_without_improvement = 0
 
@@ -163,7 +158,7 @@ def train_transformer(cfg=None):
         if val_ndcg > best_ndcg:
             best_ndcg = val_ndcg
             epochs_without_improvement = 0
-            save_model(model, cfg.weight_file)
+            save_bundle(model, id_to_track, cfg, cfg.bundle_dir, best_ndcg=float(val_ndcg))
         elif epoch >= cfg.min_epochs:
             epochs_without_improvement += 1
             print(f"[EARLY STOP] No NDCG improvement for {epochs_without_improvement}/{patience} "

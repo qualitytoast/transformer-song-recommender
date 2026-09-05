@@ -28,4 +28,5 @@ class Config:
     patience: int = 10 # Early-stopping patience (epochs w/o NDCG improvement)
 
     # Artifacts
-    weight_file: str = "spotify_transformer_weights.npz"
+    bundle_dir: str = "artifacts" # save_bundle writes weights.npz, vocab.json, metadata.json here
+    resume: bool = False # True: load bundle_dir's weights before training instead of starting fresh

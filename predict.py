@@ -2,8 +2,7 @@ import numpy as np
 import engine
 from config import Config
 from data import load_spotify_data, tokenize_and_slice
-from model import SongRecommender
-from train import load_model # Reuse — importing train won't run it (it's guarded by __main__)
+from checkpoint import load_bundle # From checkpoint, not train: keeps matplotlib out of the import chain
 
 def show_sample_predictions(cfg=None, n=5, k=5):
     cfg = cfg or Config()
@@ -14,9 +13,15 @@ def show_sample_predictions(cfg=None, n=5, k=5):
     _, _, X_test, Y_test, vocab_size, id_to_track = tokenize_and_slice(
         raw, cfg.context_length, test_split=cfg.test_split, min_freq=cfg.min_freq)
 
-    model = SongRecommender(vocab_size=vocab_size, embed_dim=cfg.embed_dim,
-                            context_length=cfg.context_length, num_layers=cfg.num_layers)
-    load_model(model, cfg.weight_file) # The best-NDCG checkpoint from training
+    # Load AFTER the split. Building a model draws from np.random, and doing that before
+    # tokenize_and_slice would change its shuffle and leak training playlists into "held-out".
+    model, vocab, meta = load_bundle(cfg.bundle_dir) # The best-NDCG bundle from training
+
+    # X_test holds IDs from the data's vocab; the model's rows come from the bundle's vocab.
+    # They must be the same vocab or the demo is meaningless.
+    if [id_to_track[i] for i in range(vocab_size)] != vocab:
+        raise ValueError(f"'{cfg.data_folder}' produces a different vocab than the bundle in "
+                         f"'{cfg.bundle_dir}' was trained on.")
 
     X, Y_true = X_test[:n], Y_test[:n]
     logits = model(X).data # (n, vocab_size)
