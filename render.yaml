@@ -1,0 +1,19 @@
+# Render Blueprint: the deployment described as code rather than dashboard clicks.
+# Render reads this when you create a Blueprint from the repo, so the service is
+# reproducible and reviewable instead of configured by hand.
+#
+# Docs: https://render.com/docs/blueprint-spec
+services:
+  - type: web
+    name: transformer-song-recommender
+    runtime: docker
+    plan: free
+    region: oregon # free tier also offers frankfurt, ohio, singapore, virginia
+    branch: main
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+
+    # Render injects PORT; the Dockerfile's CMD reads it, so nothing is hardcoded.
+    # /health returns the loaded model's metadata, which makes this a real check:
+    # it passes only once the bundle has loaded, not merely once the port is open.
+    healthCheckPath: /health

@@ -270,8 +270,10 @@ docker run --rm -p 7860:7860 song-recommender
 curl localhost:7860/health
 ```
 
-The image listens on `$PORT` and runs as a non-root user, so it drops onto Koyeb,
-Render or Cloud Run unchanged. It is small enough for any free CPU tier:
+The image listens on `$PORT` and runs as a non-root user, so it drops onto Render
+or Cloud Run unchanged. [`render.yaml`](render.yaml) declares the service as a
+Blueprint, so the deployment is version-controlled rather than configured by hand.
+It is small enough for any free CPU tier:
 
 | | |
 |---|---|

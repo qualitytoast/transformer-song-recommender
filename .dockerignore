@@ -6,6 +6,7 @@ venv/
 .github/
 runs/
 tests/
+render.yaml
 __pycache__/
 **/__pycache__/
 training_log.txt

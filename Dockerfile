@@ -26,8 +26,8 @@ USER user
 COPY --chown=user:user engine.py model.py checkpoint.py recommender.py app.py ./
 COPY --chown=user:user artifacts/ ./artifacts/
 
-# Listen on $PORT so the image is host-agnostic: Koyeb, Render and Cloud Run all
-# inject their own. 7860 is the default when nothing sets it.
+# Listen on $PORT so the image is host-agnostic: Render and Cloud Run both inject
+# their own. 7860 is the default when nothing sets it (and what CI checks).
 ENV PORT=7860
 EXPOSE 7860
 CMD uvicorn app:app --host 0.0.0.0 --port ${PORT}
