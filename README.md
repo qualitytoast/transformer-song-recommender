@@ -11,6 +11,8 @@ Trained on the Spotify Million Playlist Dataset to predict the next song in a
 playlist from the songs that came before it, then **served as a REST API** in a
 container that carries the trained model with it.
 
+**▶ Try it live: [transformer-song-recommender.onrender.com/docs](https://transformer-song-recommender.onrender.com/docs)**
+
 ---
 
 ## Why from scratch?
@@ -97,22 +99,30 @@ Two design choices make this work:
 
 ## API
 
+**Live: [transformer-song-recommender.onrender.com/docs](https://transformer-song-recommender.onrender.com/docs)**
+— an interactive page for all three routes, no install needed. It runs on a free
+tier that sleeps when idle, so the first request after a quiet spell takes about
+a minute to wake.
+
 ```bash
 # What model is loaded?
-curl https://<your-space>.hf.space/health
+curl https://transformer-song-recommender.onrender.com/health
+# {"status":"ok","vocab_size":33770,"num_parameters":4448618,"best_ndcg_at_10":0.0292, …}
 
 # Find the exact spelling the model knows
-curl "https://<your-space>.hf.space/songs?q=mask"
+curl "https://transformer-song-recommender.onrender.com/songs?q=mask"
 # {"matches":["Ski Mask","Mask Off","Mask Off - Remix","Mask","Mask Off - Marshmello Remix"]}
 
 # Recommend the next song from a 10-song playlist
-curl -X POST https://<your-space>.hf.space/recommend \
+curl -X POST https://transformer-song-recommender.onrender.com/recommend \
   -H 'Content-Type: application/json' \
   -d '{"songs":["Shape of You","Bounce Back","T-Shirt","Good For You","I Want (feat. 2 Chainz)","Fake Love","Somebody Else","Controlla","Mask Off","Truffle Butter"],"k":5}'
-# {"recommendations":[{"song":"XO TOUR Llif3","prob":0.104}, …]}
+# {"recommendations":[{"song":"XO TOUR Llif3","prob":0.104},
+#                     {"song":"Broccoli (feat. Lil Yachty)","prob":0.089}, …]}
 ```
 
-`/docs` serves an interactive page for all three routes.
+That last example is the held-out playlist from the results section below: the
+true next song, *Broccoli*, comes back ranked second.
 
 The input rules are the model's own constraints made explicit, rather than
 failures waiting to happen:
