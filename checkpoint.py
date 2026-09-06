@@ -34,7 +34,8 @@ WEIGHTS_FILE = "weights.npz"
 VOCAB_FILE = "vocab.json"
 META_FILE = "metadata.json"
 
-
+# Walk through each param in the model, creating (name, tensor) pairs per param to allow for param verification
+# in loading and param name, tensor pairs for saving
 def named_parameters(module, prefix=""):
     """Walk a Module exactly like Module.parameters() in engine.py, but return
     (name, tensor) pairs, where name is the attribute path used to reach the tensor.
@@ -112,6 +113,8 @@ def load_weights(model, weights_path):
         raise FileNotFoundError(f"No weights file at {weights_path}")
 
     saved = np.load(weights_path)
+
+    # Verify all parameters are present and shaped correctly, then copy the data into the model
     for name, p in named_parameters(model):
         if name not in saved.files:
             raise KeyError(f"{weights_path} has no array named '{name}'")

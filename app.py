@@ -22,7 +22,11 @@ from recommender import Recommender
 # this raises, the process exits, and the host reports a failed start. That is
 # the intent: never serve a half-loaded or randomly initialised model.
 BUNDLE_DIR = os.environ.get("BUNDLE_DIR", "artifacts")
+
+# Load model filled with pre-existing weights, vocab, and metadata.
 model, vocab, meta = load_bundle(BUNDLE_DIR)
+
+# Create Recommender instance w/ filled model and vocab. This is the object that handles every request.
 rec = Recommender(model, vocab)
 
 app = FastAPI(

@@ -58,7 +58,13 @@ class Tensor:
         return out
 
     def __matmul__(self, other):
-        out = Tensor(self.data @ other.data, _creators=[self, other], _op="matmul")
+        # np.errstate: on Apple Silicon, numpy's Accelerate-backed matmul raises spurious
+        # floating-point flags (divide-by-zero / overflow / invalid) even on finite inputs, which
+        # numpy then reports as RuntimeWarnings (numpy/numpy#28687, #29820). Outputs were verified
+        # finite; genuine divergence is caught by the finite-loss check in train.py, so the flags
+        # are ignored for this op only.
+        with np.errstate(divide="ignore", over="ignore", invalid="ignore"):
+            out = Tensor(self.data @ other.data, _creators=[self, other], _op="matmul")
         
         # Involves operand transpose
         def _backward():
@@ -66,8 +72,9 @@ class Tensor:
             def swap_inner(arr):
                 return np.swapaxes(arr, -1, -2) if arr.ndim >= 2 else arr.T
                 
-            grad_self = out.grad @ swap_inner(other.data)
-            grad_other = swap_inner(self.data) @ out.grad
+            with np.errstate(divide="ignore", over="ignore", invalid="ignore"):  # see forward
+                grad_self = out.grad @ swap_inner(other.data)
+                grad_other = swap_inner(self.data) @ out.grad
             
             # Un-broadcast grad_self (Collapse extra dimensions)
             while len(grad_self.shape) > len(self.data.shape):

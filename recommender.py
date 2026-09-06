@@ -34,31 +34,31 @@ class Recommender:
         """songs: list of song names. Returns up to k (name, probability) pairs, best
         first. Fewer than k only if the vocab has fewer than k songs outside the input.
         Raises ValueError with a readable message on bad input."""
-        # 1. Length rule.
+        # Length rule.
         if len(songs) < self.context_length:
             raise ValueError(f"Need at least {self.context_length} songs, got {len(songs)}")
         songs = songs[-self.context_length:]
 
-        # 2. Names -> IDs. Report every unknown name at once, not just the first.
+        # Names -> IDs. Report every unknown name at once, not just the first.
         unknown = [s for s in songs if s not in self.track_to_id]
         if unknown:
             raise ValueError(f"Unknown songs: {unknown}")
         ids = [self.track_to_id[s] for s in songs]
 
-        # 3. Forward pass. Same call as train.py, but a batch of one: X is (1, 10).
+        # Forward pass. Same call as train.py, but a batch of one: X is (1, 10).
         X = np.array([ids])
         logits = self.model(X).data[0]  # (vocab_size,) one score per song
 
-        # 4. Scores -> probabilities (numerically stable softmax).
+        # Scores -> probabilities (numerically stable softmax).
         shifted = logits - logits.max()
         exps = np.exp(shifted)
         probs = exps / exps.sum()
 
-        # 5. Rank every song, skip the ones already in the playlist, keep the top k.
-        #    Looking at k + len(ids) candidates is enough to step over every input.
+        # Rank every song, skip the ones already in the playlist, keep the top k.
+        # Looking at k + len(ids) candidates is enough to step over every input.
         exclude = set(ids)
         ranked = np.argsort(-probs)[: k + len(ids)]
         top = [int(i) for i in ranked if int(i) not in exclude][:k]
 
-        # 6. IDs -> names.
+        # IDs -> names.
         return [(self.id_to_track[i], float(probs[i])) for i in top]

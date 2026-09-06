@@ -11,6 +11,7 @@ from data import load_spotify_data, tokenize_and_slice
 from config import Config
 from tracking import ExperimentTracker
 from checkpoint import save_bundle, load_weights, read_vocab, read_metadata, WEIGHTS_FILE
+from metrics import ndcg_at_k
 
 def train_transformer(cfg=None):
     cfg = cfg or Config()
@@ -109,6 +110,12 @@ def train_transformer(cfg=None):
             logits = model(X_batch)
             # Calculate loss
             loss = cross_entropy_loss(logits, Y_batch_onehot)
+
+            # Divergence guard: a NaN/inf loss would otherwise poison every weight on the next step
+            # and keep going silently. Fail here, with the epoch and batch, instead.
+            if not np.isfinite(loss.data):
+                raise FloatingPointError(f"Loss became {loss.data} at epoch {epoch}, "
+                                         f"batch {start_idx // batch_size}. Training diverged.")
             
             # Clear old gradients from last training run
             optimizer.zero_grad()
@@ -135,17 +142,14 @@ def train_transformer(cfg=None):
         val_loss_node = cross_entropy_loss(val_logits, Y_val_onehot)
         val_loss_history.append(val_loss_node.data)
         
-        # Compute validation accuracy on test data using NDCG@10
-        # Take the logit the model outputted, find the correct song, and find num. of songs the model put above that song
-        # Calculate rank, rank = 1 + num. of songs scored strictly higher than the correct song
-        # Give a final score given that rank, score = 1/log2(1 + rank), so ideal score is 1/log2(2) = 1. 
-        # Use a log function since log is a smoother curve (top 3 answers are given similar scores, then a gradual dropoff). Normalize (divide by 1, but this is done trivially)
+        # Compute validation accuracy on test data using NDCG@10.
+        # Rank the correct song against the whole catalog, then score it by 1/log2(1 + rank)
+        # rank = 1 + num. of songs scored strictly higher than the correct song
+        # so the top few answers score similarly and it tapers off. See metrics.py for the math.
+        # evaluate.py calls this same function, so the training metric and the reported
+        # metric can never drift apart.
         K = 10
-        true_scores = val_logits.data[np.arange(val_size), Y_val_raw][:, None] # Grab the score the model gave the correct song, per example
-        ranks = np.sum(val_logits.data > true_scores, axis=1) + 1 # Find how many score outscored the correct song, add 1 to get rank
-        gains = 1.0 / np.log2(ranks + 1)
-        gains[ranks > K] = 0.0 # Not in top-K, set to 0
-        val_ndcg = np.mean(gains) # Average score across all validation examples (across all (X_train, Y_target) pairs)
+        val_ndcg = ndcg_at_k(val_logits.data, Y_val_raw, K)
         ndcg_history.append(val_ndcg)
         tracker.log_epoch(epoch,
                           train_loss=float(avg_train_loss),

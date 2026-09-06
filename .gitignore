@@ -1,9 +1,10 @@
 # --- Data (Million Playlist Dataset — too large for GitHub) ---
 data/
 
-# --- Trained model weights (old single-file format, and the bundle folder) ---
-*.npz
-artifacts/
+# --- Old single-file checkpoints, from before the bundle format. Root only:
+# --- artifacts/ IS committed, because the host builds the serving image straight
+# --- from this repo and the weights have to ship with it.
+/*.npz
 
 # --- Training log ---
 training_log.txt

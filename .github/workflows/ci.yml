@@ -57,18 +57,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-          cache: pip
-
-      - name: Install dependencies
-        run: pip install -r requirements.txt
-
-      - name: Create a fake bundle (CI has no trained weights)
-        run: python -m tests.fake_bundle artifacts
-
+      # artifacts/ is committed, so this builds the same image the host builds,
+      # carrying the real trained bundle.
       - name: Build serving image
         run: docker build -t song-recommender .
 
@@ -81,9 +71,11 @@ jobs:
           done
           curl -sf http://localhost:7860/health || { docker logs serve; exit 1; }
           echo
+          # Ten real song names, read out of the committed vocab.
+          SONGS=$(python -c "import json; v=json.load(open('artifacts/vocab.json')); print(json.dumps(v[:10]))")
           curl -sf -X POST http://localhost:7860/recommend \
             -H 'Content-Type: application/json' \
-            -d '{"songs": ["Song 0","Song 1","Song 2","Song 3","Song 4","Song 5","Song 6","Song 7","Song 8","Song 9"], "k": 3}' \
+            -d "{\"songs\": ${SONGS}, \"k\": 3}" \
             || { docker logs serve; exit 1; }
           echo
           docker stop serve
