@@ -63,7 +63,19 @@ def test_recommend_k_out_of_range_gives_422(client, ten_songs):
     assert client.post("/recommend", json={"songs": ten_songs, "k": 500}).status_code == 422
 
 
-def test_root_redirects_to_docs(client):
+def test_root_serves_the_demo_page(client):
     r = client.get("/", follow_redirects=False)
-    assert r.status_code in (302, 307)
-    assert r.headers["location"] == "/docs"
+    assert r.status_code == 200
+    assert r.headers["content-type"].startswith("text/html")
+    body = r.text
+    assert "<title>Transformer Song Recommender</title>" in body
+    # The page is useless if it cannot reach the API, so check it wires to both routes.
+    assert "/recommend" in body and "/songs" in body
+
+
+def test_demo_page_preloads_a_ten_song_example(client):
+    # One click from a result: an empty playlist would ask visitors to invent ten
+    # song names the model happens to know, which loses most of them.
+    body = client.get("/").text
+    example = body.split("const EXAMPLE = [")[1].split("];")[0]
+    assert example.count('"') // 2 == 10

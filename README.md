@@ -11,7 +11,7 @@ Trained on the Spotify Million Playlist Dataset to predict the next song in a
 playlist from the songs that came before it, then **served as a REST API** in a
 container that carries the trained model with it.
 
-**▶ Try it live: [transformer-song-recommender.onrender.com/docs](https://transformer-song-recommender.onrender.com/docs)**
+**▶ Try it live: [transformer-song-recommender.onrender.com](https://transformer-song-recommender.onrender.com)**
 
 ---
 
@@ -99,10 +99,12 @@ Two design choices make this work:
 
 ## API
 
-**Live: [transformer-song-recommender.onrender.com/docs](https://transformer-song-recommender.onrender.com/docs)**
-— an interactive page for all three routes, no install needed. It runs on a free
-tier that sleeps when idle, so the first request after a quiet spell takes about
-a minute to wake.
+**Live: [transformer-song-recommender.onrender.com](https://transformer-song-recommender.onrender.com)**
+— a demo page that arrives with a real held-out playlist loaded, so one click
+shows the model's picks; search swaps in any of the 33,770 songs it knows.
+[`/docs`](https://transformer-song-recommender.onrender.com/docs) is the API
+console for the routes below. It runs on a free tier that sleeps when idle, so
+the first load after a quiet spell takes about a minute to wake.
 
 ```bash
 # What model is loaded?
@@ -149,7 +151,8 @@ failures waiting to happen:
 | `evaluate.py` | Scores a finished bundle on the held-out split against a most-popular and an untrained baseline |
 | `checkpoint.py` | Bundle format: named parameter walk, `save_bundle`, strict `load_weights`, `load_bundle` |
 | `recommender.py` | Serving logic: input validation, names ⇄ IDs, forward pass, softmax, ranking |
-| `app.py` | FastAPI routes: `/health`, `/songs`, `/recommend` |
+| `app.py` | FastAPI routes: `/health`, `/songs`, `/recommend`, and the demo page at `/` |
+| `static/index.html` | The demo page: playlist editor, song search, ranked predictions. No framework, no build step |
 | `predict.py` | Sample predictions on held-out playlists |
 | `test_gradients.py` | Numerical gradient check verifying all backward passes |
 | `tests/` | Test suite for the bundle format, ranking rules, and API, run against a synthetic bundle |

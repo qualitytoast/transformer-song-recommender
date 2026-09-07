@@ -4,17 +4,18 @@ Run locally:      uvicorn app:app --reload
 In the container: uvicorn app:app --host 0.0.0.0 --port 7860
 
 Routes:
+    GET  /                  the demo page (static/index.html)
     GET  /health            is the server up, and which model is loaded
     GET  /songs?q=mask      search the vocab for exact spellings
     POST /recommend         {"songs": [10 names], "k": 5} -> top-k next songs
-    GET  /docs              interactive page FastAPI generates for the routes above
+    GET  /docs              interactive API console FastAPI generates for the routes above
 """
 import logging
 import os
 import time
 
 from fastapi import FastAPI, HTTPException, Query
-from fastapi.responses import RedirectResponse
+from fastapi.responses import FileResponse, RedirectResponse
 from pydantic import BaseModel, Field
 
 from checkpoint import load_bundle
@@ -32,6 +33,10 @@ log = logging.getLogger("recommender")
 # this raises, the process exits, and the host reports a failed start. That is
 # the intent: never serve a half-loaded or randomly initialised model.
 BUNDLE_DIR = os.environ.get("BUNDLE_DIR", "artifacts")
+
+# Resolved against this file, not the working directory, so the page is found
+# wherever uvicorn happens to be started from.
+STATIC_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
 
 # Load model filled with pre-existing weights, vocab, and metadata.
 _t0 = time.perf_counter()
@@ -58,7 +63,12 @@ class RecommendRequest(BaseModel):
 
 @app.get("/", include_in_schema=False)
 def root():
-    return RedirectResponse(url="/docs")
+    """The demo page: a playlist, a search box, and the model's picks. Falls back
+    to the API docs if the file is missing, so the API still works without it."""
+    index = os.path.join(STATIC_DIR, "index.html")
+    if not os.path.exists(index):
+        return RedirectResponse(url="/docs")
+    return FileResponse(index, media_type="text/html")
 
 
 @app.get("/health")

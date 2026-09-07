@@ -1,0 +1,382 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Transformer Song Recommender</title>
+<meta name="description" content="Next-song prediction from a Transformer built from scratch in pure NumPy.">
+<style>
+  :root{
+    /* Palette echoes loss_curve.png: dark ground, cyan and magenta accents. */
+    --bg:#0a0a0f; --panel:#14141d; --panel-2:#1b1b26; --border:#282838;
+    --text:#eaeaf2; --muted:#8b8b9e; --cyan:#3ae8ff; --magenta:#ff5fd2;
+    --warn:#ffc857; --danger:#ff6b6b;
+    --radius:12px;
+    --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Roboto,Helvetica,Arial,sans-serif;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; background:var(--bg); color:var(--text); font-family:var(--sans);
+    line-height:1.5; -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:760px; margin:0 auto; padding:40px 20px 64px}
+
+  /* ---------- header ---------- */
+  header h1{
+    margin:0 0 6px; font-size:clamp(24px,4.5vw,34px); letter-spacing:-.02em;
+    background:linear-gradient(90deg,var(--cyan),var(--magenta));
+    -webkit-background-clip:text; background-clip:text; color:transparent;
+  }
+  header p{margin:0; color:var(--muted); font-size:15px}
+  header .meta{
+    margin-top:12px; font-family:var(--mono); font-size:12px; color:var(--muted);
+    display:flex; gap:16px; flex-wrap:wrap;
+  }
+  header .meta b{color:var(--text); font-weight:600}
+
+  /* ---------- banners ---------- */
+  .banner{
+    display:none; margin:20px 0 0; padding:12px 14px; border-radius:var(--radius);
+    font-size:14px; border:1px solid;
+  }
+  .banner.show{display:block}
+  .banner.waking{background:rgba(255,200,87,.08); border-color:rgba(255,200,87,.35); color:var(--warn)}
+  .banner.error{background:rgba(255,107,107,.08); border-color:rgba(255,107,107,.35); color:var(--danger)}
+
+  /* ---------- panels ---------- */
+  section{
+    margin-top:28px; background:var(--panel); border:1px solid var(--border);
+    border-radius:var(--radius); padding:20px;
+  }
+  .head{display:flex; align-items:baseline; justify-content:space-between; gap:12px; margin-bottom:14px}
+  .head h2{margin:0; font-size:12px; letter-spacing:.14em; text-transform:uppercase; color:var(--muted); font-weight:600}
+  .count{font-family:var(--mono); font-size:12px; color:var(--muted)}
+  .count.full{color:var(--cyan)}
+
+  /* ---------- playlist ---------- */
+  ol{list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:6px}
+  ol li{
+    display:flex; align-items:center; gap:12px; padding:9px 12px;
+    background:var(--panel-2); border:1px solid transparent; border-radius:8px; font-size:14px;
+  }
+  ol li .idx{font-family:var(--mono); font-size:12px; color:var(--muted); min-width:18px}
+  ol li .name{flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+  ol li button{
+    background:none; border:0; color:var(--muted); cursor:pointer; font-size:16px;
+    line-height:1; padding:4px 6px; border-radius:6px;
+  }
+  ol li button:hover{color:var(--danger); background:rgba(255,107,107,.1)}
+  .empty{color:var(--muted); font-size:14px; font-style:italic; padding:8px 0}
+
+  /* ---------- search ---------- */
+  .search{position:relative; margin-top:14px}
+  .search input{
+    width:100%; padding:11px 14px; font-size:14px; font-family:inherit;
+    background:var(--panel-2); color:var(--text);
+    border:1px solid var(--border); border-radius:8px;
+  }
+  .search input:focus{outline:none; border-color:var(--cyan); box-shadow:0 0 0 3px rgba(58,232,255,.12)}
+  .search input:disabled{opacity:.45; cursor:not-allowed}
+  .results{
+    position:absolute; z-index:10; top:calc(100% + 4px); left:0; right:0;
+    background:var(--panel-2); border:1px solid var(--border); border-radius:8px;
+    max-height:230px; overflow-y:auto; display:none;
+    box-shadow:0 12px 32px rgba(0,0,0,.5);
+  }
+  .results.show{display:block}
+  .results div{padding:9px 14px; font-size:14px; cursor:pointer; border-bottom:1px solid var(--border)}
+  .results div:last-child{border-bottom:0}
+  .results div:hover,.results div.active{background:rgba(58,232,255,.1); color:var(--cyan)}
+  .results .none{color:var(--muted); cursor:default; font-style:italic}
+  .results .none:hover{background:none; color:var(--muted)}
+
+  /* ---------- action ---------- */
+  .go{
+    display:block; width:100%; margin-top:20px; padding:14px; cursor:pointer;
+    font-size:15px; font-weight:600; font-family:inherit; color:#08080c;
+    background:linear-gradient(90deg,var(--cyan),var(--magenta));
+    border:0; border-radius:10px; transition:opacity .15s, transform .05s;
+  }
+  .go:hover:not(:disabled){opacity:.9}
+  .go:active:not(:disabled){transform:translateY(1px)}
+  .go:disabled{opacity:.35; cursor:not-allowed}
+
+  /* ---------- predictions ---------- */
+  #out{display:none}
+  #out.show{display:block}
+  .pred{margin-bottom:14px}
+  .pred:last-child{margin-bottom:0}
+  .pred .row{display:flex; align-items:baseline; gap:10px; margin-bottom:5px}
+  .pred .rank{font-family:var(--mono); font-size:12px; color:var(--muted); min-width:18px}
+  .pred .song{flex:1; font-size:14px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+  .pred .pct{font-family:var(--mono); font-size:12px; color:var(--muted)}
+  .bar{height:5px; background:var(--panel-2); border-radius:3px; overflow:hidden}
+  .bar span{
+    display:block; height:100%; border-radius:3px; width:0;
+    background:linear-gradient(90deg,var(--cyan),var(--magenta));
+    transition:width .5s cubic-bezier(.2,.8,.2,1);
+  }
+  .took{margin-top:16px; font-family:var(--mono); font-size:11px; color:var(--muted)}
+
+  .spinner{
+    display:inline-block; width:13px; height:13px; vertical-align:-2px; margin-right:8px;
+    border:2px solid rgba(255,255,255,.25); border-top-color:#08080c; border-radius:50%;
+    animation:spin .7s linear infinite;
+  }
+  @keyframes spin{to{transform:rotate(360deg)}}
+
+  footer{margin-top:32px; font-size:13px; color:var(--muted); text-align:center}
+  footer a{color:var(--cyan); text-decoration:none}
+  footer a:hover{text-decoration:underline}
+  @media (max-width:520px){ .wrap{padding:28px 16px 48px} section{padding:16px} }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <h1>Transformer Song Recommender</h1>
+    <p>A Transformer built from scratch in pure NumPy — no PyTorch, no TensorFlow. Give it
+       10 songs and it predicts what comes next.</p>
+    <div class="meta" id="meta"></div>
+  </header>
+
+  <div class="banner waking" id="waking">
+    Waking the server up. It sleeps when idle on the free tier, so this can take up to a minute.
+  </div>
+  <div class="banner error" id="error"></div>
+
+  <section>
+    <div class="head">
+      <h2>Your playlist</h2>
+      <span class="count" id="count">0 / 10</span>
+    </div>
+    <ol id="list"></ol>
+    <div class="search">
+      <input id="q" type="text" autocomplete="off" spellcheck="false"
+             placeholder="Search the model's 33,770 songs to add one…" aria-label="Search for a song">
+      <div class="results" id="matches"></div>
+    </div>
+    <button class="go" id="go" disabled>Get recommendations</button>
+  </section>
+
+  <section id="out" aria-live="polite">
+    <div class="head">
+      <h2>Predicted next song</h2>
+      <span class="count" id="took"></span>
+    </div>
+    <div id="preds"></div>
+  </section>
+
+  <footer>
+    <a href="/docs">API docs</a> ·
+    <a href="https://github.com/qualitytoast/transformer-song-recommender">Source on GitHub</a>
+  </footer>
+</div>
+
+<script>
+"use strict";
+
+// A held-out playlist the model has never trained on. Pre-loaded so the page is
+// one click from a result: asking a visitor to think up 10 songs the model knows
+// is the fastest way to lose them.
+const EXAMPLE = [
+  "Shape of You", "Bounce Back", "T-Shirt", "Good For You", "I Want (feat. 2 Chainz)",
+  "Fake Love", "Somebody Else", "Controlla", "Mask Off", "Truffle Butter"
+];
+const MAX = 10;
+
+let playlist = EXAMPLE.slice();
+let active = -1;      // highlighted row in the search dropdown
+let searchSeq = 0;    // guards against out-of-order search responses
+
+const $ = id => document.getElementById(id);
+const listEl = $("list"), countEl = $("count"), qEl = $("q"), matchEl = $("matches"),
+      goEl = $("go"), outEl = $("out"), predsEl = $("preds"), tookEl = $("took"),
+      errEl = $("error"), wakeEl = $("waking"), metaEl = $("meta");
+
+const showError = msg => { errEl.textContent = msg; errEl.classList.add("show"); };
+const clearError = () => errEl.classList.remove("show");
+
+// ---------- playlist ----------
+function render() {
+  listEl.innerHTML = "";
+  if (!playlist.length) {
+    listEl.innerHTML = '<div class="empty">No songs yet — search below to add 10.</div>';
+  }
+  playlist.forEach((song, i) => {
+    const li = document.createElement("li");
+    const idx = document.createElement("span");
+    idx.className = "idx"; idx.textContent = String(i + 1).padStart(2, "0");
+    const name = document.createElement("span");
+    name.className = "name"; name.textContent = song;      // textContent, never innerHTML
+    const rm = document.createElement("button");
+    rm.type = "button"; rm.textContent = "×";
+    rm.setAttribute("aria-label", `Remove ${song}`);
+    rm.onclick = () => { playlist.splice(i, 1); render(); };
+    li.append(idx, name, rm);
+    listEl.appendChild(li);
+  });
+
+  const full = playlist.length >= MAX;
+  countEl.textContent = `${playlist.length} / ${MAX}`;
+  countEl.classList.toggle("full", full);
+  goEl.disabled = !full;
+  qEl.disabled = full;
+  qEl.placeholder = full
+    ? "Playlist full — remove a song to swap one in"
+    : "Search the model's 33,770 songs to add one…";
+}
+
+// ---------- search ----------
+function hideMatches() { matchEl.classList.remove("show"); matchEl.innerHTML = ""; active = -1; }
+
+function showMatches(names) {
+  matchEl.innerHTML = "";
+  if (!names.length) {
+    const d = document.createElement("div");
+    d.className = "none"; d.textContent = "No songs match — the model only knows these 33,770.";
+    matchEl.appendChild(d);
+  }
+  names.forEach(n => {
+    const d = document.createElement("div");
+    d.textContent = n;                                     // textContent, never innerHTML
+    d.onclick = () => addSong(n);
+    matchEl.appendChild(d);
+  });
+  matchEl.classList.add("show");
+  active = -1;
+}
+
+function addSong(name) {
+  if (playlist.length >= MAX) return;
+  playlist.push(name);
+  qEl.value = "";
+  hideMatches();
+  render();
+  if (!qEl.disabled) qEl.focus();
+}
+
+let timer = null;
+qEl.addEventListener("input", () => {
+  clearTimeout(timer);
+  const q = qEl.value.trim();
+  if (!q) { hideMatches(); return; }
+  // Debounced so typing does not fire a request per keystroke.
+  timer = setTimeout(async () => {
+    const seq = ++searchSeq;
+    try {
+      const r = await fetch(`/songs?q=${encodeURIComponent(q)}&limit=8`);
+      if (!r.ok) return;
+      const data = await r.json();
+      if (seq === searchSeq) showMatches(data.matches);   // ignore stale responses
+    } catch { /* transient network error: leave the dropdown as it is */ }
+  }, 180);
+});
+
+qEl.addEventListener("keydown", e => {
+  const opts = [...matchEl.querySelectorAll("div:not(.none)")];
+  if (e.key === "Escape") return hideMatches();
+  if (!opts.length) return;
+  if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+    e.preventDefault();
+    active = e.key === "ArrowDown"
+      ? (active + 1) % opts.length
+      : (active - 1 + opts.length) % opts.length;
+    opts.forEach((o, i) => o.classList.toggle("active", i === active));
+  } else if (e.key === "Enter") {
+    e.preventDefault();
+    opts[active >= 0 ? active : 0].click();
+  }
+});
+
+document.addEventListener("click", e => {
+  if (!e.target.closest(".search")) hideMatches();
+});
+
+// ---------- recommend ----------
+goEl.addEventListener("click", async () => {
+  clearError();
+  goEl.disabled = true;
+  goEl.innerHTML = '<span class="spinner"></span>Thinking…';
+  const t0 = performance.now();
+  try {
+    const r = await fetch("/recommend", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({songs: playlist, k: 5})
+    });
+    const data = await r.json();
+    if (!r.ok) {
+      // 400 carries a readable rule violation; 422 carries a schema complaint.
+      showError(typeof data.detail === "string" ? data.detail : "That request was rejected.");
+      outEl.classList.remove("show");
+      return;
+    }
+    showPredictions(data.recommendations, performance.now() - t0);
+  } catch {
+    showError("Could not reach the API. It may be waking up — try again in a moment.");
+  } finally {
+    goEl.textContent = "Get recommendations";
+    render();
+  }
+});
+
+function showPredictions(recs, ms) {
+  predsEl.innerHTML = "";
+  const top = recs.length ? recs[0].prob : 1;
+  recs.forEach((rec, i) => {
+    const wrap = document.createElement("div");
+    wrap.className = "pred";
+    const row = document.createElement("div");
+    row.className = "row";
+    const rank = document.createElement("span");
+    rank.className = "rank"; rank.textContent = `${i + 1}.`;
+    const song = document.createElement("span");
+    song.className = "song"; song.textContent = rec.song;   // textContent, never innerHTML
+    const pct = document.createElement("span");
+    pct.className = "pct"; pct.textContent = (rec.prob * 100).toFixed(1) + "%";
+    row.append(rank, song, pct);
+    const bar = document.createElement("div");
+    bar.className = "bar";
+    const fill = document.createElement("span");
+    bar.appendChild(fill);
+    wrap.append(row, bar);
+    predsEl.appendChild(wrap);
+    // Bars are scaled to the top pick so the shape of the distribution is visible;
+    // absolute probabilities over 33,770 songs are all small.
+    requestAnimationFrame(() => { fill.style.width = (rec.prob / top * 100) + "%"; });
+  });
+  tookEl.textContent = `${Math.round(ms)} ms`;
+  outEl.classList.add("show");
+}
+
+// ---------- startup ----------
+(async function init() {
+  render();
+  // The free tier sleeps when idle. If /health is slow, say so rather than
+  // letting the page look broken.
+  const slow = setTimeout(() => wakeEl.classList.add("show"), 1500);
+  try {
+    const r = await fetch("/health");
+    const h = await r.json();
+    metaEl.innerHTML = "";
+    [["songs", h.vocab_size.toLocaleString()],
+     ["parameters", h.num_parameters.toLocaleString()],
+     ["NDCG@10", h.best_ndcg_at_10.toFixed(4)]].forEach(([k, v]) => {
+      const s = document.createElement("span");
+      s.innerHTML = `<b></b> ${k}`;
+      s.querySelector("b").textContent = v;
+      metaEl.appendChild(s);
+    });
+  } catch {
+    showError("Could not reach the API.");
+  } finally {
+    clearTimeout(slow);
+    wakeEl.classList.remove("show");
+  }
+})();
+</script>
+</body>
+</html>

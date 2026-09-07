@@ -24,6 +24,7 @@ USER user
 
 # Only the serving files. Nothing training-only, no dataset.
 COPY --chown=user:user engine.py model.py checkpoint.py recommender.py app.py ./
+COPY --chown=user:user static/ ./static/
 COPY --chown=user:user artifacts/ ./artifacts/
 
 # Listen on $PORT so the image is host-agnostic: Render and Cloud Run both inject
