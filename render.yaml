@@ -13,6 +13,11 @@ services:
     dockerfilePath: ./Dockerfile
     dockerContext: .
 
+    # Deploy only when the branch's CI checks pass, so a commit that fails the
+    # gradient check, the tests, or the container smoke test never reaches
+    # production. 'commit' would deploy on every push regardless of CI.
+    autoDeployTrigger: checksPass
+
     # Render injects PORT; the Dockerfile's CMD reads it, so nothing is hardcoded.
     # /health returns the loaded model's metadata, which makes this a real check:
     # it passes only once the bundle has loaded, not merely once the port is open.

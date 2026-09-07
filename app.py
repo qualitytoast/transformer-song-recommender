@@ -9,7 +9,9 @@ Routes:
     POST /recommend         {"songs": [10 names], "k": 5} -> top-k next songs
     GET  /docs              interactive page FastAPI generates for the routes above
 """
+import logging
 import os
+import time
 
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import RedirectResponse
@@ -18,16 +20,28 @@ from pydantic import BaseModel, Field
 from checkpoint import load_bundle
 from recommender import Recommender
 
+# Log to stdout, which the host captures and shows in its dashboard — no log
+# service needed. Every request records what came in, what went out and how long
+# it took, so latency is a measured number and a bad request leaves a trace.
+logging.basicConfig(level=logging.INFO,
+                    format="%(asctime)s %(levelname)s %(message)s",
+                    datefmt="%H:%M:%S")
+log = logging.getLogger("recommender")
+
 # Runs once, when uvicorn imports this file. If the bundle is missing or broken
 # this raises, the process exits, and the host reports a failed start. That is
 # the intent: never serve a half-loaded or randomly initialised model.
 BUNDLE_DIR = os.environ.get("BUNDLE_DIR", "artifacts")
 
 # Load model filled with pre-existing weights, vocab, and metadata.
+_t0 = time.perf_counter()
 model, vocab, meta = load_bundle(BUNDLE_DIR)
 
 # Create Recommender instance w/ filled model and vocab. This is the object that handles every request.
 rec = Recommender(model, vocab)
+log.info("loaded %s: %d songs, %d params, trained %s (git %s) in %.2fs",
+         BUNDLE_DIR, meta["vocab_size"], meta.get("num_parameters", -1),
+         meta.get("trained_at"), meta.get("git_sha"), time.perf_counter() - _t0)
 
 app = FastAPI(
     title="Transformer Song Recommender",
@@ -63,13 +77,24 @@ def health():
 @app.get("/songs")
 def songs(q: str = Query(min_length=1, description="Substring to search for"),
           limit: int = Query(default=20, ge=1, le=100)):
-    return {"matches": rec.search(q, limit)}
+    t0 = time.perf_counter()
+    matches = rec.search(q, limit)
+    log.info("search q=%r -> %d matches, %.1f ms",
+             q, len(matches), (time.perf_counter() - t0) * 1000)
+    return {"matches": matches}
 
 
 @app.post("/recommend")
 def recommend(req: RecommendRequest):
+    t0 = time.perf_counter()
     try:
         picks = rec.recommend(req.songs, req.k)
     except ValueError as e:
+        # Rejected input is a warning, not an error: the server is fine, the
+        # request broke a rule. Logged so a caller's repeated failures are visible.
+        log.warning("recommend rejected (%d songs, k=%d): %s", len(req.songs), req.k, e)
         raise HTTPException(status_code=400, detail=str(e))
+    ms = (time.perf_counter() - t0) * 1000
+    top = f"{picks[0][0]!r} (p={picks[0][1]:.3f})" if picks else "none"
+    log.info("recommend %d songs, k=%d -> top=%s, %.1f ms", len(req.songs), req.k, top, ms)
     return {"recommendations": [{"song": name, "prob": prob} for name, prob in picks]}

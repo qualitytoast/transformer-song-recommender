@@ -79,3 +79,7 @@ jobs:
             || { docker logs serve; exit 1; }
           echo
           docker stop serve
+
+# Deploying is not a job here. Render watches these checks directly and ships only
+# when they all pass (autoDeployTrigger: checksPass in render.yaml), so the gate
+# needs no deploy hook, no stored secret, and no extra job to keep in sync.

@@ -146,7 +146,7 @@ failures waiting to happen:
 | `data.py` | Data pipeline: loading the Spotify JSON, building the vocabulary, tokenizing and slicing into (input, target) pairs |
 | `train.py` | Orchestration: training loop, validation, NDCG@10, early stopping, loss-curve plotting |
 | `metrics.py` | Ranking metrics (`ndcg_at_k`, `hits_at_k`), shared by training and evaluation so they cannot drift |
-| `evaluate.py` | Scores a finished bundle on the held-out split, with an optional untrained baseline |
+| `evaluate.py` | Scores a finished bundle on the held-out split against a most-popular and an untrained baseline |
 | `checkpoint.py` | Bundle format: named parameter walk, `save_bundle`, strict `load_weights`, `load_bundle` |
 | `recommender.py` | Serving logic: input validation, names ⇄ IDs, forward pass, softmax, ranking |
 | `app.py` | FastAPI routes: `/health`, `/songs`, `/recommend` |
@@ -186,8 +186,8 @@ python test_gradients.py
 # 5. See what it recommends on held-out playlists
 python predict.py
 
-# 6. Score the trained bundle (add --baseline to compare against an untrained model)
-python evaluate.py --baseline
+# 6. Score the trained bundle against both baselines
+python evaluate.py --popularity --baseline
 ```
 
 Serving the trained model locally:
@@ -207,22 +207,28 @@ Trained on 5,000 playlists on an M5 MacBook Air: 33,770-song vocabulary after
 min-frequency filtering, 110,333 training sequences, 14,844 held out.
 4.45M parameters. Early stopping ended the run at epoch 32 after ~20 minutes.
 
-| Metric (14,844 held-out sequences) | Trained | Untrained baseline |
-|---|---|---|
-| NDCG@10 | 0.0330 | 0.00017 |
-| True next song in top 10 | 5.9% | — |
-| True next song in top 5 | 3.8% | — |
-| True next song at rank 1 | 1.4% | — |
+Measured against two baselines, because "better than random" is a low bar:
 
-The random baseline is low because ranking is over the full catalog: with 33,770
-songs, chance alone puts the right one in the top 10 about 0.03% of the time.
-The trained model is roughly **190× better than chance**, which is a meaningful
-result for a 2-layer model on CPU and still nowhere near a production recommender.
+| 14,844 held-out sequences | NDCG@10 | Top 10 | Top 5 | Rank 1 |
+|---|---|---|---|---|
+| **Transformer** | **0.0330** | 5.9% | 3.8% | 1.4% |
+| Most-popular songs | 0.0049 | 1.1% | 0.6% | 0.1% |
+| Untrained model | 0.00017 | 0.0% | 0.0% | 0.0% |
+
+The **most-popular baseline** is the one that matters. It ignores the playlist
+entirely and always suggests the songs that most often come next in training
+(*Closer*, *One Dance*, *Roses*). That is the no-machine-learning solution, and it
+is a genuinely hard bar, because popular songs really do follow lots of things.
+**The Transformer beats it by 6.7×**, which is the evidence that attention over the
+playlist is doing real work rather than rediscovering popularity.
+
+The untrained model is the floor, ~190× below the trained one. With 33,770 songs,
+chance alone lands the right one in the top 10 about 0.03% of the time.
 
 Reproducible at `seed=42`, with the best-NDCG checkpoint kept via early stopping
 on the 3,000-sequence validation subset (best NDCG@10 there: 0.0292). Every number
-in this table comes from `python evaluate.py --baseline`, which rebuilds the same
-held-out split and re-scores the saved bundle.
+in this table comes from `python evaluate.py --popularity --baseline`, which
+rebuilds the same held-out split and re-scores the saved bundle.
 
 ### Sample predictions (held-out playlists)
 
@@ -292,6 +298,17 @@ It is small enough for any free CPU tier:
 | Startup (load + build lookups) | 0.26 s |
 | Latency per recommendation | ~2 ms |
 
+Every request is logged with its inputs, top pick and latency, which is where
+that 2 ms comes from. Rejected requests log as warnings, so a caller repeatedly
+sending bad input is visible rather than silent:
+
+```
+INFO  loaded artifacts: 33770 songs, 4448618 params, trained 2026-09-05 (git cab8a1d) in 0.05s
+INFO  search q='mask' -> 6 matches, 0.9 ms
+INFO  recommend 10 songs, k=5 -> top='XO TOUR Llif3' (p=0.104), 2.0 ms
+WARN  recommend rejected (3 songs, k=10): Need at least 10 songs, got 3
+```
+
 `artifacts/` is committed to this repo rather than gitignored, which is a
 deliberate trade: the host builds the image straight from a git clone, with no
 model registry to fetch from and no credentials in the build. The cost is ~19 MB
@@ -309,19 +326,30 @@ Four jobs run on every push:
 | Job | What it proves |
 |---|---|
 | `gradient-check` | Every hand-derived backward pass matches finite differences |
-| `tests` | 39 pytest cases across the bundle format, metrics, ranking rules, and API |
+| `tests` | 58 pytest cases across the data pipeline, bundle format, metrics, ranking rules, and API |
 | `check-image` | The gradient check passes inside a clean container |
 | `serve-image` | The serving image builds from the committed bundle, starts, and answers real requests |
+
+**These gate the deploy.** `render.yaml` sets `autoDeployTrigger: checksPass`, so a
+commit that fails any of the four never reaches production — the difference
+between continuous deployment and merely automatic deployment.
 
 The test suite never touches the Spotify dataset. It builds a **synthetic bundle**
 — 20 made-up songs, a tiny randomly initialized model — and runs the real save,
 load, validate, rank, and serve paths against it. That is what lets CI test every
 rule in seconds, on a machine that has no dataset.
 
-Notable cases: a round trip restores every array and reproduces the forward pass
-exactly; a missing array, a wrong shape, and a stale format version each raise
-with the offending name; and the API's rules hold over HTTP (400 for a broken
-rule, 422 for malformed JSON).
+The data pipeline gets its own tests for a specific reason: it is the only part
+that can fail *silently*. If the sliding window were off by one, nothing would
+crash — training would run, loss would fall, and the model would simply learn the
+wrong task. So those tests use playlists small enough to verify by hand and assert
+the exact windows and targets, including that a window overlapping a filtered-out
+rare song disappears rather than being quietly mangled.
+
+Elsewhere: a bundle round trip restores every array and reproduces the forward
+pass exactly; a missing array, a wrong shape, and a stale format version each
+raise with the offending name; NDCG is checked against ranks worked out by hand;
+and the API's rules hold over HTTP (400 for a broken rule, 422 for malformed JSON).
 
 ## Implementation notes
 
